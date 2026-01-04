@@ -137,3 +137,43 @@ def get_results(symbol: str, parse_date: str, report_type: str, sheet_num: int ,
         sorted_reports[date] = reports[date]
     
     return sorted_reports if sort else reports
+
+#================================ 
+def extract_date(title: str) -> int:
+    trans = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+    t = title.translate(trans)
+
+    m = re.search(r"\b(1[0-9]{3}|0[0-9]{3})/([01]?\d)/([0-3]?\d)\b", t)
+    date = m.group(0) if m else None
+    date = date.replace('/',"")
+    return int(date)
+
+def sort_df_dic(all_data: dict, report_type: str, dummy_dic: dict) -> dict:
+    if report_type not in all_data:
+        all_data[report_type] = {}
+
+    for _, df in dummy_dic.items():
+        if df is None:
+            continue
+
+        dt = df["Date"][0]
+
+        if dt not in all_data[report_type]:
+            all_data[report_type][dt] = df
+
+    
+    return all_data
+
+def get_date_period(data: pl.DataFrame) -> tuple:
+    text = data["3"][0]  # یا data.row(0)[col_index]
+
+    df_period = (
+        pl.Series([text])
+        .str.extract(r"دوره\s+(\d+)\s+ماهه", 1)
+        .fill_null("12")
+        .cast(pl.Int64)
+        .item()
+    )
+    df_date = data.select(pl.col("3").str.extract(r'(\d{4}/\d{2}/\d{2})', 1)).to_dict()['3'][0].replace("/",'')
+
+    return df_date, df_period

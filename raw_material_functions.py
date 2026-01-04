@@ -106,14 +106,16 @@ def create_dict_dataframes(url: str, date: int, report_type: str) -> dict:
 
 def creat_raw_material_dataframe(symbol: str, url: str, date: int, period: int, publish: int) -> dict:
     all_data = create_dict_dataframes(url, date, 'RawMaterial')
-    
+
     for key, data in all_data.items():
         if data is None: continue      
         cols = data.columns
         sorted_cols = sorted(cols, key=lambda x: (0 if x == "row" else 1, int(x) if x.isdigit() else float("inf")))
-        sorted_cols = ['row', 'Date', '1', '2', '3', '4', '6', '7', '9', '10', '12', '13']
+        sorted_cols = ['row', '1', '2', '3', '4', '6', '7', '9', '10', '12', '13']
         data = data.select(sorted_cols)
-
+        
+        df_date, df_period = gf.get_date_period(data)
+        
         col_name = {
             "Raw Material": '1',
             'Unit': '2',
@@ -140,12 +142,13 @@ def creat_raw_material_dataframe(symbol: str, url: str, date: int, period: int, 
 
         rename_map = {v: k for k, v in col_name.items()}
         df_goods = df_goods.rename(rename_map)
-        
+                        
         df_goods = df_goods.insert_column(0, pl.lit(symbol).alias("Symbol"))
-        df_goods = df_goods.insert_column(2, pl.lit(period).alias("Period"))
+        df_goods = df_goods.insert_column(1, pl.lit(df_date).alias("Date"))
+        df_goods = df_goods.insert_column(2, pl.lit(df_period).alias("Period"))
         df_goods = df_goods.insert_column(3, pl.lit(publish).alias("Publish"))
-        cs = ['Symbol','Period','Publish','Date', 'Raw Material', 'Unit', 'Type', 'Beginning Inventory_qn', 'Beginning Inventory_pr', 'Purchases During the Period_qn', 'Purchases During the Period_pr', 'Consumption_qn', 'Consumption_pr', 'Ending Inventory_qn', 'Ending Inventory_pr']
+        cs = ['Symbol','Date','Period','Publish', 'Raw Material', 'Unit', 'Type', 'Beginning Inventory_qn', 'Beginning Inventory_pr', 'Purchases During the Period_qn', 'Purchases During the Period_pr', 'Consumption_qn', 'Consumption_pr', 'Ending Inventory_qn', 'Ending Inventory_pr']
         df_goods = df_goods[cs]
         all_data[key] = df_goods
     
-    return all_data     
+    return all_data
