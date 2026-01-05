@@ -8,7 +8,7 @@ import general_functions as gf
 from persiantools import characters, digits
 pl.Config.set_tbl_rows(1000)
 
-def get_table(url: str, table: int):
+def get_table(url: str, desc: str):
     headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:143.0) Gecko/20100101 Firefox/143.0',
     'Accept': 'application/json, text/plain, */*',
@@ -35,14 +35,11 @@ def get_table(url: str, table: int):
         continue
     items = json.loads(data)['sheets']
 
-    if isinstance(table, list):
-        cells = []
-        for t in table:
-            raw_cells = items[0]['tables'][t]['cells']
-            cells.append([(i['columnSequence'], i['rowSequence'], i['value'], i['periodEndToDate']) for i in raw_cells])
-        return [x for xs in cells for x in xs]
+    for ind, table in enumerate(items[0]['tables']):
+        if characters.ar_to_fa(desc) == characters.ar_to_fa(str(table['title_Fa'])):
+            break
     
-    cells = items[0]['tables'][table]['cells']
+    cells = items[0]['tables'][ind]['cells']
     return [(i['columnSequence'], i['rowSequence'], i['value'], i['periodEndToDate']) for i in cells]
 
 def create_dict_dataframes(url: str, date: int, report_type: str) -> dict:
@@ -51,7 +48,8 @@ def create_dict_dataframes(url: str, date: int, report_type: str) -> dict:
                 'est_remain': pl.DataFrame(),
                 'est_next_year': pl.DataFrame()}
     
-    cells_tuples = get_table(url, ed.tabels[report_type].value)
+    cells_tuples = get_table(url, "هزینه های سربار و هزینه های عمومی و اداری شرکت")
+    return cells_tuples
     dates = sorted(list(set([i[-1] for i in cells_tuples if i[-1] != ''])))
     for date_ in dates:
         filtered_cells = [(i[0], i[1], i[2]) for i in cells_tuples if i[-1] == '' or i[-1] == date_]
@@ -83,7 +81,7 @@ def create_dict_dataframes(url: str, date: int, report_type: str) -> dict:
 
 def creat_Overhead_dataframe(symbol: str, url: str, date: int, period: int, publish: int) -> dict:
     all_data = create_dict_dataframes(url, date, 'Overhead')
-
+    return all_data
     col_name = ['description',
                 'Wages and Salaries Expense',
                 'Depreciation Expense',
@@ -110,4 +108,4 @@ def creat_Overhead_dataframe(symbol: str, url: str, date: int, period: int, publ
         data = data.insert_column(3, pl.lit(publish).alias("Publish"))
         all_data[key] = data 
 
-    return all_data     
+    return all_data
