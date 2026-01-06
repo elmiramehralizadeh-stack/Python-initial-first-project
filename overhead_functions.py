@@ -49,7 +49,7 @@ def create_dict_dataframes(url: str, date: int, report_type: str) -> dict:
                 'est_next_year': pl.DataFrame()}
     
     cells_tuples = get_table(url, "هزینه های سربار و هزینه های عمومی و اداری شرکت")
-    return cells_tuples
+
     dates = sorted(list(set([i[-1] for i in cells_tuples if i[-1] != ''])))
     for date_ in dates:
         filtered_cells = [(i[0], i[1], i[2]) for i in cells_tuples if i[-1] == '' or i[-1] == date_]
@@ -81,7 +81,6 @@ def create_dict_dataframes(url: str, date: int, report_type: str) -> dict:
 
 def creat_Overhead_dataframe(symbol: str, url: str, date: int, period: int, publish: int) -> dict:
     all_data = create_dict_dataframes(url, date, 'Overhead')
-    return all_data
     col_name = ['description',
                 'Wages and Salaries Expense',
                 'Depreciation Expense',
