@@ -1,4 +1,3 @@
-
 import requests
 import json
 import re
@@ -6,7 +5,7 @@ import polars as pl
 import Enum_data as ed
 import general_functions as gf
 from persiantools import characters, digits
-pl.Config.set_tbl_rows(1000)
+
 
 def get_table(url: str, table: int):
     headers = {
@@ -24,6 +23,12 @@ def get_table(url: str, table: int):
     }
     response = requests.request("GET", url)
     statement = response.text
+    
+    # get fin_year from bs4
+    f1 = statement[statement.find('سال'):statement.find('سال')+200]
+    found = re.search(r"(\d{4}/\d{2}/\d{2})", f1).group(1)
+    fin_year = int(found.replace('/',''))
+    
     pattern = r"var datasource = (.*?});"
     match = re.search(pattern, statement)
     if match:
@@ -34,25 +39,26 @@ def get_table(url: str, table: int):
     for _, data in records:
         continue
     items = json.loads(data)['sheets']
-
+    
     if isinstance(table, list):
         cells = []
         for t in table:
             raw_cells = items[0]['tables'][t]['cells']
             cells.append([(i['columnSequence'], i['rowSequence'], i['value'], i['periodEndToDate']) for i in raw_cells])
-        return [x for xs in cells for x in xs]
+        return [x for xs in cells for x in xs], fin_year
     
     cells = items[0]['tables'][table]['cells']
-    return [(i['columnSequence'], i['rowSequence'], i['value'], i['periodEndToDate']) for i in cells]
+    return [(i['columnSequence'], i['rowSequence'], i['value'], i['periodEndToDate']) for i in cells], fin_year
 
 def create_dict_dataframes(url: str, date: int, report_type: str) -> dict:
     all_data ={ 'report_this_year': pl.DataFrame(),
                 'est_remain': pl.DataFrame(),
                 'est_next_year': pl.DataFrame()}
 
-    cells_tuples = get_table(url, ed.tabels[report_type].value)
+    cells_tuples, fin_year = get_table(url, ed.tabels[report_type].value)
 
     dates = sorted(list(set([i[-1] for i in cells_tuples if i[-1] != ''])))
+
     for date_ in dates:
         products = []
         filtered_cells = [(i[0], i[1], i[2]) for i in cells_tuples if i[-1] == date_]
@@ -66,10 +72,13 @@ def create_dict_dataframes(url: str, date: int, report_type: str) -> dict:
         df_products = df_products.filter(df_products['row']>=df['row'][0] ,df_products['row']<=df['row'][-1])
         df = df_products.join(df, on="row", how="left")
 
+
         for i, col in enumerate(df.columns):
             cols = ed.cols[report_type].value
             value = df[col][0]        # value from first row
+            
             if(isinstance(value, str)):
+
                 for val in value.split():
                     if'/' in val:
                         num = int(val.replace('/', ''))
@@ -79,25 +88,24 @@ def create_dict_dataframes(url: str, date: int, report_type: str) -> dict:
                         if num == date :
                             all_data['report_this_year'] = df.select(cols_to_select)
                             all_data['report_this_year'] = all_data['report_this_year'].with_row_index("row")
-                            all_data['report_this_year'] = all_data['report_this_year'].insert_column(-1, pl.lit(int(digits.fa_to_en(date_).replace('/', ''))).alias("Date"))
-                        else:
+                            all_data['report_this_year'] = all_data['report_this_year'].insert_column(len(df.columns), pl.lit(int(digits.fa_to_en(date_).replace('/', ''))).alias("Date"))
+
+                        elif num == fin_year:
+
                             df = df.with_columns(pl.col("1").map_elements(lambda x: characters.ar_to_fa(x)).alias("1"))
                             split_row = (df.filter(pl.col("1") == 'جمع کـل').select(pl.col("row").first()).item())
                             est_df_remain = df.filter(pl.col("row") <= split_row)
-                            est_next_year  = df.filter(pl.col("row") > split_row)
+                            all_data['est_remain'] = est_df_remain
+                            all_data['est_remain'] = all_data['est_remain'].insert_column(len(est_df_remain.columns), pl.lit(int(digits.fa_to_en(date_).replace('/', ''))).alias("Date"))
+                        
+                        elif num > fin_year:
 
-                            remain_year = est_df_remain.select(pl.col("3").str.extract(r'(\d{4})/\d{2}/\d{2}', 1).cast(pl.Int32))[0].item()
-                            next_yesr_year = est_next_year.select(pl.col("3").str.extract(r'(\d{4})/\d{2}/\d{2}', 1).cast(pl.Int32))[0].item()
-                            
-                            if remain_year == next_yesr_year:
-                                    all_data['est_next_year'] = est_df_remain
-                                    all_data['est_next_year'] = all_data['est_next_year'].insert_column(-1, pl.lit(int(digits.fa_to_en(date_).replace('/', ''))).alias("Date"))
-                            else:
-                                    all_data['est_remain'] = est_df_remain
-                                    all_data['est_remain'] = all_data['est_remain'].insert_column(-1, pl.lit(int(digits.fa_to_en(date_).replace('/', ''))).alias("Date"))                          
+                            df = df.with_columns(pl.col("1").map_elements(lambda x: characters.ar_to_fa(x)).alias("1"))
+                            split_row = (df.filter(pl.col("1") == 'جمع کـل').select(pl.col("row").first()).item())
+                            est_next_year = df.filter(pl.col("row") <= split_row)
+                            all_data['est_next_year'] = est_next_year
+                            all_data['est_next_year'] = all_data['est_next_year'].insert_column(len(est_next_year.columns), pl.lit(int(digits.fa_to_en(date_).replace('/', ''))).alias("Date"))
 
-                                    all_data['est_next_year'] = est_next_year
-                                    all_data['est_next_year'] = all_data['est_next_year'].insert_column(-1, pl.lit(int(digits.fa_to_en(date_).replace('/', ''))).alias("Date"))
     
     for key, value in all_data.items():
         if(value.is_empty()):
